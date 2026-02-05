@@ -1,31 +1,39 @@
 
-export type LeadStatusLabel = 'Novo' | 'Interagiu' | 'Interesse' | 'Vendido' | 'Perdido';
+export type LeadStatusLabel = 
+  | 'Novo' 
+  | 'Respondeu' 
+  | 'Não Respondeu' 
+  | 'Score Baixo' 
+  | 'Em Negociação' 
+  | 'Pedido de Compra' 
+  | 'Vendido' 
+  | 'Perdido';
+
+export interface Lead {
+  id: string;
+  nome: string;
+  vendedor: string | null;
+  status: LeadStatusLabel;
+  created_at: string;
+  last_interaction_at: string | null;
+  origem?: string;
+  carro_interesse?: string;
+  faixa_preco?: string;
+  observacoes?: string;
+}
 
 export interface Vendedor {
   id: string;
-  nome: string;
+  name: string;
   avatar: string;
   vendas: number;
   leads_recebidos: number;
   conversao: number;
 }
 
-export interface Lead {
-  id: string;
-  nome: string;
-  telefone: string;
-  email: string;
-  status: LeadStatusLabel;
-  vendedor_id: string | null;
-  created_at: string;
-  last_interaction_at: string;
-}
-
 export interface DashboardStats {
-  leads_hoje: number;
-  interagindo: number;
-  vendidos: number;
-  perdidos: number;
-  taxa_interesse: number;
-  parados_15min: number;
+  total_hoje: number;
+  em_atendimento: number;
+  taxa_conversao: number;
+  leads_atrasados: number;
 }
