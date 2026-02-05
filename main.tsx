@@ -1,9 +1,9 @@
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import './index.css';
 
-// Defining interfaces for ErrorBoundary to ensure proper TypeScript inference
+// Estrutura para capturar erros e não deixar a tela branca
 interface ErrorBoundaryProps {
   children: React.ReactNode;
 }
@@ -13,35 +13,31 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly declaring state as a property of the class to satisfy strict property checks
   public state: ErrorBoundaryState = { hasError: false };
 
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-  }
-
-  // Lifecycle method for updating state when an error occurs
   static getDerivedStateFromError(): ErrorBoundaryState {
     return { hasError: true };
   }
 
   componentDidCatch(error: any, errorInfo: any) {
-    console.error("CRM Error Catch:", error, errorInfo);
+    console.error("Erro no Sistema:", error, errorInfo);
   }
 
   render() {
-    // Correctly accessing state via the typed class property
-    // Fixes Error: Property 'state' does not exist on type 'ErrorBoundary'
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'sans-serif' }}>
-          <h1>Algo deu errado na renderização.</h1>
-          <button onClick={() => window.location.reload()}>Recarregar Sistema</button>
+        <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'sans-serif', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <h1 style={{ color: '#4c1d95', fontSize: '24px', fontWeight: '900' }}>MANOS CRM</h1>
+          <p style={{ color: '#64748b', marginTop: '10px' }}>Ocorreu um problema ao carregar esta página.</p>
+          <button 
+            onClick={() => window.location.reload()}
+            style={{ marginTop: '20px', padding: '12px 24px', backgroundColor: '#6d28d9', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            Tentar Novamente
+          </button>
         </div>
       );
     }
-    // Correctly accessing props via the typed class property
-    // Fixes Error: Property 'props' does not exist on type 'ErrorBoundary'
     return this.props.children;
   }
 }
