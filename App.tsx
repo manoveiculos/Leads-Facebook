@@ -107,9 +107,10 @@ const App: React.FC = () => {
     sessionStorage.removeItem('manos_auth');
   };
 
-  // Extrair vendedores reais dos dados
+  // Extrair vendedores reais dos dados + Alexandre solicitado
   const realSellers = useMemo(() => {
     const sellers = new Set<string>();
+    sellers.add("Alexandre"); // Adicionando Alexandre como vendedor fixo conforme solicitado
     leads.forEach(l => {
       if (l.vendedor) sellers.add(l.vendedor);
     });
@@ -519,7 +520,7 @@ const App: React.FC = () => {
                         <ListIcon size={18} /> Lista
                       </button>
                       <button 
-                        onClick={() => setViewMode('kanban')}
+                        onClick={() => { setViewMode('kanban'); }}
                         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'kanban' ? 'bg-red-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                       >
                         <Kanban size={18} /> Kanban
