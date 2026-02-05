@@ -5,23 +5,15 @@ import App from './App';
 
 // Estrutura para capturar erros e não deixar a tela branca
 interface ErrorBoundaryProps {
-  // children is made optional to satisfy JSX expectations in some TypeScript configurations
-  children?: React.ReactNode;
+  children: React.ReactNode;
 }
 
 interface ErrorBoundaryState {
   hasError: boolean;
 }
 
-// Added explicit typing and constructor to fix the 'props' and 'state' property errors
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly declare state property to resolve "Property 'state' does not exist" errors
-  public state: ErrorBoundaryState;
-
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
+  public state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(): ErrorBoundaryState {
     return { hasError: true };
@@ -46,7 +38,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
-    // Accessing this.props.children which is now correctly recognized via inheritance and generic typing
     return this.props.children;
   }
 }
