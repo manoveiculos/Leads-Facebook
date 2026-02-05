@@ -7,7 +7,8 @@ import {
   Save, MessageSquare, FileCheck, ShoppingCart,
   PhoneOff, Activity, Menu, X, Filter, RotateCcw,
   Sparkles, Kanban, List as ListIcon,
-  ChevronRight, Clock, MapPin, PieChart as PieChartIcon
+  ChevronRight, Clock, MapPin, PieChart as PieChartIcon,
+  Lock, LogOut
 } from 'lucide-react';
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -19,6 +20,10 @@ import { Lead, LeadStatusLabel, DashboardStats } from './types';
 import { fetchLeads, updateLead, supabase } from './supabaseClient';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+// Cores Oficiais Manos (Baseadas na Logo)
+const MANOS_RED = "#e31e24";
+const MANOS_BLUE = "#001e4a";
 
 const STATUS_OPTIONS: LeadStatusLabel[] = [
   'Novo', 'Respondeu', 'Não Respondeu', 'Score Baixo', 'Em Negociação', 'Pedido de Compra', 'Vendido', 'Perdido'
@@ -47,6 +52,7 @@ const STATUS_CONFIG: Record<LeadStatusLabel, { color: string, bg: string, border
 };
 
 const LOGO_URL = "https://manosveiculos.com.br/wp-content/uploads/2024/02/LogoManos.png";
+const LOGIN_BG_URL = "https://manosveiculos.com.br/wp-content/uploads/2024/02/Banner-desktop.png";
 
 const Badge = ({ status }: { status?: LeadStatusLabel }) => {
   const s = status || 'Novo';
@@ -59,6 +65,13 @@ const Badge = ({ status }: { status?: LeadStatusLabel }) => {
 };
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return sessionStorage.getItem('manos_auth') === 'true';
+  });
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+  const [loginError, setLoginError] = useState(false);
+
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leads'>('dashboard');
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'detail'>('list');
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -76,6 +89,24 @@ const App: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+  // Lógica de Login
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginUser.toLowerCase() === 'manos' && loginPass === 'facebook') {
+      setIsAuthenticated(true);
+      sessionStorage.setItem('manos_auth', 'true');
+      setLoginError(false);
+    } else {
+      setLoginError(true);
+      setTimeout(() => setLoginError(false), 3000);
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    sessionStorage.removeItem('manos_auth');
+  };
+
   // Extrair vendedores reais dos dados
   const realSellers = useMemo(() => {
     const sellers = new Set<string>();
@@ -86,6 +117,8 @@ const App: React.FC = () => {
   }, [leads]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const init = async () => {
       setLoading(true);
       const data = await fetchLeads();
@@ -95,7 +128,7 @@ const App: React.FC = () => {
     init();
 
     const channel = supabase
-      .channel('manos-crm-v3')
+      .channel('manos-crm-v5')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads_facebook_2026' }, (payload) => {
         if (payload.eventType === 'INSERT') setLeads(p => [payload.new as Lead, ...p]);
         if (payload.eventType === 'UPDATE') {
@@ -106,7 +139,7 @@ const App: React.FC = () => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [isAuthenticated]);
 
   const selectedLead = useMemo(() => 
     leads.find(l => String(l.id) === String(selectedLeadId)), 
@@ -228,6 +261,89 @@ const App: React.FC = () => {
     return groups;
   }, [filteredLeads]);
 
+  // Tela de Login com Background e Glassmorphism
+  if (!isAuthenticated) {
+    return (
+      <div 
+        className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden"
+        style={{
+          backgroundImage: `url(${LOGIN_BG_URL})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      >
+        {/* Overlay para escurecer um pouco o fundo e dar foco ao card */}
+        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
+
+        <div className="max-w-md w-full relative z-10 animate-in fade-in zoom-in duration-500">
+          <div className="bg-white/85 backdrop-blur-xl rounded-[40px] shadow-2xl overflow-hidden p-8 md:p-12 border border-white/40 ring-1 ring-black/5">
+            <div className="flex flex-col items-center mb-10">
+              <div className="p-4 bg-white/50 rounded-3xl mb-6 shadow-sm border border-white">
+                <img src={LOGO_URL} alt="Manos Veículos" className="h-16 object-contain" />
+              </div>
+              <h1 className="text-3xl font-black tracking-tight text-slate-800">
+                Portal de <span style={{ color: MANOS_RED }}>Gestão</span>
+              </h1>
+              <p className="text-slate-500 text-sm mt-1 font-medium">Controle de Leads Facebook</p>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Usuário de Acesso</label>
+                <div className="relative group">
+                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-red-600 transition-colors" size={20} />
+                  <input 
+                    type="text" 
+                    required
+                    value={loginUser}
+                    onChange={(e) => setLoginUser(e.target.value)}
+                    placeholder="manos"
+                    className="w-full bg-white/60 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-slate-800 focus:ring-2 focus:ring-red-600 focus:bg-white focus:border-transparent outline-none transition-all placeholder:text-slate-300 font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Senha do Sistema</label>
+                <div className="relative group">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-red-600 transition-colors" size={20} />
+                  <input 
+                    type="password" 
+                    required
+                    value={loginPass}
+                    onChange={(e) => setLoginPass(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-white/60 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-slate-800 focus:ring-2 focus:ring-red-600 focus:bg-white focus:border-transparent outline-none transition-all placeholder:text-slate-300 font-medium"
+                  />
+                </div>
+              </div>
+
+              {loginError && (
+                <div className="flex items-center gap-2 text-rose-500 text-xs font-bold animate-bounce bg-rose-50 p-4 rounded-2xl border border-rose-100">
+                  <AlertCircle size={16} /> Acesso negado. Verifique os dados.
+                </div>
+              )}
+
+              <button 
+                type="submit"
+                style={{ backgroundColor: MANOS_RED }}
+                className="w-full text-white font-black py-4 rounded-2xl shadow-xl shadow-red-200 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 group text-sm tracking-wide"
+              >
+                ENTRAR NO CRM
+                <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
+              </button>
+            </form>
+          </div>
+          
+          <div className="text-center mt-8">
+             <p className="text-white/70 text-xs font-bold tracking-widest uppercase">© 2024 Manos Veículos - Alta Performance</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Dashboard / Leads App
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
       {/* Sidebar - Desktop */}
@@ -237,28 +353,37 @@ const App: React.FC = () => {
           onClick={() => navigateFromDashboard('all')}
         >
           <img src={LOGO_URL} alt="Manos Veículos" className="h-12 object-contain self-start" />
-          <div className="h-1 w-12 bg-indigo-600 rounded-full"></div>
+          <div className="h-1 w-12 bg-red-600 rounded-full"></div>
         </div>
 
         <nav className="flex-1 space-y-1">
           <button 
             onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-slate-500 hover:bg-slate-50'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-slate-50 text-red-600 font-bold' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             <LayoutDashboard size={20} /> Painel Geral
           </button>
           <button 
             onClick={() => { navigateFromDashboard('all'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'leads' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-slate-500 hover:bg-slate-50'}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'leads' ? 'bg-slate-50 text-red-600 font-bold' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             <Users size={20} /> Meus Leads
           </button>
         </nav>
 
-        <div className="mt-auto pt-6 border-t border-slate-100">
-          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-4 rounded-2xl text-white shadow-md">
-            <p className="text-xs opacity-80 mb-1">Versão 3.0</p>
-            <p className="font-bold text-sm">Dados 100% Reais</p>
+        <div className="mt-auto pt-6 space-y-3">
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-3 text-rose-500 hover:bg-rose-50 rounded-xl transition-all font-medium"
+          >
+            <LogOut size={20} /> Sair do Sistema
+          </button>
+          <div 
+            style={{ backgroundColor: MANOS_BLUE }}
+            className="p-4 rounded-2xl text-white shadow-md border-b-4 border-red-600"
+          >
+            <p className="text-xs opacity-70 mb-1">Versão 3.8 Gold</p>
+            <p className="font-bold text-sm">Dashboard Admin</p>
           </div>
         </div>
       </aside>
@@ -282,15 +407,15 @@ const App: React.FC = () => {
               <input 
                 type="text" 
                 placeholder="Buscar por nome ou carro..." 
-                className="w-full pl-10 pr-4 py-2 bg-slate-100 border-none rounded-full text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full pl-10 pr-4 py-2 bg-slate-100 border-none rounded-full text-sm focus:ring-2 focus:ring-red-600 outline-none"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
             <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
                <div className="text-right hidden sm:block">
-                 <p className="text-xs font-bold text-slate-800">Administrador</p>
-                 <p className="text-[10px] text-slate-400">Manos Veículos</p>
+                 <p className="text-xs font-bold text-slate-800">Manos Admin</p>
+                 <p className="text-[10px] text-slate-400">Autenticado</p>
                </div>
                <div 
                  className="w-10 h-10 rounded-full bg-white border border-slate-200 shadow-sm overflow-hidden flex items-center justify-center p-1 cursor-pointer"
@@ -310,14 +435,14 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 {[
                   { label: 'Leads Hoje', val: stats.total_hoje, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50', mode: 'today' },
-                  { label: 'Em Atendimento', val: stats.em_atendimento, icon: Activity, color: 'text-indigo-600', bg: 'bg-indigo-50', mode: 'active' },
+                  { label: 'Em Atendimento', val: stats.em_atendimento, icon: Activity, color: 'text-red-600', bg: 'bg-red-50', mode: 'active' },
                   { label: 'Taxa de Venda', val: `${stats.taxa_conversao}%`, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50', mode: null },
                   { label: 'Total de Leads', val: stats.total_leads, icon: Users, color: 'text-purple-600', bg: 'bg-purple-50', mode: 'all' },
                 ].map((s, i) => (
                   <div 
                     key={i} 
                     onClick={() => s.mode && navigateFromDashboard(s.mode as any)}
-                    className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm transition-all ${s.mode ? 'cursor-pointer hover:shadow-lg hover:-translate-y-1 hover:border-indigo-200' : ''}`}
+                    className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm transition-all ${s.mode ? 'cursor-pointer hover:shadow-lg hover:-translate-y-1 hover:border-red-200' : ''}`}
                   >
                     <div className="flex items-center gap-4 mb-4">
                       <div className={`p-3 rounded-2xl ${s.bg} ${s.color}`}>
@@ -327,7 +452,7 @@ const App: React.FC = () => {
                     </div>
                     <p className="text-3xl font-black text-slate-800">{s.val}</p>
                     {s.mode && (
-                      <p className="text-[10px] text-indigo-500 font-bold mt-2 flex items-center gap-1">
+                      <p className="text-[10px] text-red-500 font-bold mt-2 flex items-center gap-1">
                         Ver detalhes <ChevronRight size={10} />
                       </p>
                     )}
@@ -373,7 +498,7 @@ const App: React.FC = () => {
                         <XAxis dataKey="name" />
                         <YAxis />
                         <Tooltip cursor={{fill: '#f8fafc'}} />
-                        <Bar dataKey="leads" fill="#6366f1" radius={[8, 8, 0, 0]} />
+                        <Bar dataKey="leads" fill="#e31e24" radius={[8, 8, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -389,13 +514,13 @@ const App: React.FC = () => {
                     <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
                       <button 
                         onClick={() => setViewMode('list')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'list' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'list' ? 'bg-red-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                       >
                         <ListIcon size={18} /> Lista
                       </button>
                       <button 
                         onClick={() => setViewMode('kanban')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'kanban' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'kanban' ? 'bg-red-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                       >
                         <Kanban size={18} /> Kanban
                       </button>
@@ -403,7 +528,7 @@ const App: React.FC = () => {
                     {dashboardFilterMode !== 'all' && (
                       <button 
                         onClick={() => setDashboardFilterMode('all')}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold border border-indigo-100 hover:bg-indigo-100"
+                        className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-600 rounded-xl text-xs font-bold border border-red-100 hover:bg-red-100"
                       >
                         Limpar Filtro Dashboard <X size={12} />
                       </button>
@@ -412,7 +537,7 @@ const App: React.FC = () => {
 
                   <div className="flex flex-wrap items-center gap-3">
                     <select 
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-red-600 font-medium"
                       value={filterSeller}
                       onChange={(e) => setFilterSeller(e.target.value)}
                     >
@@ -420,7 +545,7 @@ const App: React.FC = () => {
                       {realSellers.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                     <select 
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-red-600 font-medium"
                       value={filterStatus}
                       onChange={(e) => setFilterStatus(e.target.value)}
                     >
@@ -434,7 +559,7 @@ const App: React.FC = () => {
               {/* View Rendering */}
               {loading ? (
                 <div className="flex items-center justify-center py-20">
-                  <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                  <div className="w-12 h-12 border-4 border-slate-200 border-t-red-600 rounded-full animate-spin"></div>
                 </div>
               ) : viewMode === 'list' ? (
                 <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
@@ -461,7 +586,7 @@ const App: React.FC = () => {
                             <td className="px-6 py-4"><Badge status={lead.status} /></td>
                             <td className="px-6 py-4">
                               <span className="text-sm font-medium text-slate-600 flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] text-indigo-600 uppercase font-bold">
+                                <div className="w-6 h-6 rounded-full bg-red-50 flex items-center justify-center text-[10px] text-red-600 uppercase font-bold">
                                   {lead.vendedor?.[0] || '?'}
                                 </div>
                                 {lead.vendedor || 'Sem Vendedor'}
@@ -471,18 +596,12 @@ const App: React.FC = () => {
                               <span className="text-sm text-slate-500 flex items-center gap-1"><Clock size={14} /> {new Date(lead.created_at).toLocaleDateString('pt-BR')}</span>
                             </td>
                             <td className="px-6 py-4 text-right">
-                              <ChevronRight className="inline-block text-slate-300 group-hover:text-indigo-600 transition-colors" />
+                              <ChevronRight className="inline-block text-slate-300 group-hover:text-red-600 transition-colors" />
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                    {filteredLeads.length === 0 && (
-                      <div className="p-20 text-center">
-                        <Users size={48} className="mx-auto text-slate-200 mb-4" />
-                        <p className="text-slate-500 font-bold">Nenhum lead encontrado com estes filtros.</p>
-                      </div>
-                    )}
                   </div>
                 </div>
               ) : viewMode === 'kanban' ? (
@@ -502,9 +621,9 @@ const App: React.FC = () => {
                           <div 
                             key={lead.id} 
                             onClick={() => { setSelectedLeadId(lead.id); setViewMode('detail'); }}
-                            className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group"
+                            className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-red-300 hover:shadow-md transition-all cursor-pointer group"
                           >
-                            <p className="font-bold text-slate-800 mb-2 group-hover:text-indigo-600 transition-colors">{lead.nome}</p>
+                            <p className="font-bold text-slate-800 mb-2 group-hover:text-red-600 transition-colors">{lead.nome}</p>
                             <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
                               <Car size={12} /> {lead.carro_interesse || '-'}
                             </div>
@@ -525,7 +644,7 @@ const App: React.FC = () => {
               ) : (
                 <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm max-w-4xl mx-auto">
                   <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                    <button onClick={() => setViewMode('list')} className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 font-bold transition-colors">
+                    <button onClick={() => setViewMode('list')} className="flex items-center gap-2 text-slate-500 hover:text-red-600 font-bold transition-colors">
                       <ArrowLeft size={18} /> Voltar
                     </button>
                     <div className="flex items-center gap-3">
@@ -533,7 +652,7 @@ const App: React.FC = () => {
                       <button 
                         onClick={handleSave} 
                         disabled={isSaving}
-                        className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all disabled:opacity-50"
+                        className="flex items-center gap-2 px-6 py-2 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-100 hover:bg-red-700 transition-all disabled:opacity-50"
                       >
                         {isSaving ? 'Salvando...' : <><Save size={18} /> Salvar</>}
                       </button>
@@ -547,7 +666,7 @@ const App: React.FC = () => {
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Nome Completo</label>
                         <input 
                           type="text" 
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-600 outline-none"
                           value={editFields.nome || ''}
                           onChange={e => setEditFields(prev => ({ ...prev, nome: e.target.value }))}
                         />
@@ -557,7 +676,7 @@ const App: React.FC = () => {
                         <div>
                           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Vendedor</label>
                           <select 
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-600 outline-none"
                             value={editFields.vendedor || ''}
                             onChange={e => setEditFields(prev => ({ ...prev, vendedor: e.target.value }))}
                           >
@@ -568,7 +687,7 @@ const App: React.FC = () => {
                         <div>
                           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Status</label>
                           <select 
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-indigo-600"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-600 outline-none font-bold text-red-600"
                             value={editFields.status || selectedLead?.status || 'Novo'}
                             onChange={e => setEditFields(prev => ({ ...prev, status: e.target.value as LeadStatusLabel }))}
                           >
@@ -582,7 +701,7 @@ const App: React.FC = () => {
                           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Carro de Interesse</label>
                           <input 
                             type="text" 
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-600 outline-none"
                             value={editFields.carro_interesse || ''}
                             onChange={e => setEditFields(prev => ({ ...prev, carro_interesse: e.target.value }))}
                           />
@@ -591,7 +710,7 @@ const App: React.FC = () => {
                           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Faixa de Preço</label>
                           <input 
                             type="text" 
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-600 outline-none"
                             value={editFields.faixa_preco || ''}
                             onChange={e => setEditFields(prev => ({ ...prev, faixa_preco: e.target.value }))}
                           />
@@ -602,7 +721,7 @@ const App: React.FC = () => {
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Observações Internas</label>
                         <textarea 
                           rows={4}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-red-600 outline-none resize-none"
                           value={editFields.observacoes || ''}
                           onChange={e => setEditFields(prev => ({ ...prev, observacoes: e.target.value }))}
                         />
@@ -611,15 +730,15 @@ const App: React.FC = () => {
 
                     {/* AI Analysis Side */}
                     <div className="flex flex-col">
-                      <div className="flex-1 bg-indigo-50 rounded-3xl p-6 border border-indigo-100 flex flex-col">
+                      <div className="flex-1 bg-red-50 rounded-3xl p-6 border border-red-100 flex flex-col">
                         <div className="flex items-center justify-between mb-6">
-                          <h4 className="font-black text-indigo-900 flex items-center gap-2">
-                            <Sparkles className="text-indigo-600" size={20} /> ANALISTA IA
+                          <h4 className="font-black text-red-900 flex items-center gap-2">
+                            <Sparkles className="text-red-600" size={20} /> ANALISTA IA
                           </h4>
                           <button 
                             onClick={analyzeWithAI}
                             disabled={isAnalyzing}
-                            className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50"
+                            className="p-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all disabled:opacity-50"
                           >
                             <RotateCcw size={18} className={isAnalyzing ? 'animate-spin' : ''} />
                           </button>
@@ -627,26 +746,26 @@ const App: React.FC = () => {
 
                         {isAnalyzing ? (
                           <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-                            <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-                            <p className="text-indigo-600 font-bold">Analisando dados do cliente...</p>
-                            <p className="text-indigo-400 text-xs mt-1">Isso leva apenas alguns segundos</p>
+                            <div className="w-12 h-12 border-4 border-red-200 border-t-red-600 rounded-full animate-spin mb-4"></div>
+                            <p className="text-red-600 font-bold">Analisando dados do cliente...</p>
+                            <p className="text-red-400 text-xs mt-1">Gerando insights de venda</p>
                           </div>
                         ) : aiAnalysis ? (
                           <div className="flex-1 overflow-y-auto">
-                            <div className="prose prose-sm prose-indigo whitespace-pre-wrap text-indigo-800 font-medium leading-relaxed">
+                            <div className="prose prose-sm prose-red whitespace-pre-wrap text-red-900 font-medium leading-relaxed">
                               {aiAnalysis}
                             </div>
                           </div>
                         ) : (
                           <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-                            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center text-indigo-600 mb-4 shadow-sm">
+                            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center text-red-600 mb-4 shadow-sm">
                               <Sparkles size={32} />
                             </div>
-                            <h5 className="font-bold text-indigo-900 mb-2">Deseja uma análise estratégica?</h5>
-                            <p className="text-indigo-600/70 text-sm mb-6">A IA Manos analisa o comportamento do lead e sugere o melhor fechamento.</p>
+                            <h5 className="font-bold text-red-900 mb-2">Deseja uma análise estratégica?</h5>
+                            <p className="text-red-600/70 text-sm mb-6">A IA Manos analisa o comportamento do lead e sugere o melhor fechamento.</p>
                             <button 
                               onClick={analyzeWithAI}
-                              className="px-6 py-2 bg-white text-indigo-600 font-bold rounded-xl shadow-sm hover:shadow-md transition-all border border-indigo-100"
+                              className="px-6 py-2 bg-white text-red-600 font-bold rounded-xl shadow-sm hover:shadow-md transition-all border border-red-100"
                             >
                               Gerar Análise Agora
                             </button>
@@ -681,17 +800,26 @@ const App: React.FC = () => {
             <nav className="flex-1 space-y-1">
               <button 
                 onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-slate-500'}`}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-red-50 text-red-600 font-bold' : 'text-slate-500'}`}
               >
                 <LayoutDashboard size={20} /> Painel Geral
               </button>
               <button 
                 onClick={() => { navigateFromDashboard('all'); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'leads' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-slate-500'}`}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'leads' ? 'bg-red-50 text-red-600 font-bold' : 'text-slate-500'}`}
               >
                 <Users size={20} /> Meus Leads
               </button>
             </nav>
+
+            <div className="mt-auto border-t border-slate-100 pt-6">
+              <button 
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-4 py-3 text-rose-500 hover:bg-rose-50 rounded-xl transition-all font-medium"
+              >
+                <LogOut size={20} /> Sair do Sistema
+              </button>
+            </div>
           </aside>
         </div>
       )}
