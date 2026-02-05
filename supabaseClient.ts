@@ -14,19 +14,16 @@ export const fetchLeads = async () => {
       .order('created_at', { ascending: false });
     
     if (error) {
-      console.error('Erro Supabase (fetchLeads):', error.message);
+      console.error('Erro Supabase:', error.message);
       return [];
     }
     return data || [];
   } catch (err) {
-    console.error('Erro Crítico (fetchLeads):', err);
+    console.error('Erro Crítico:', err);
     return [];
   }
 };
 
-/**
- * Atualiza qualquer campo de um lead
- */
 export const updateLead = async (leadId: string, updates: Record<string, any>) => {
   try {
     const { error } = await supabase
@@ -37,18 +34,9 @@ export const updateLead = async (leadId: string, updates: Record<string, any>) =
       })
       .eq('id', leadId);
       
-    if (error) {
-      console.error('Erro ao atualizar lead:', error.message);
-      return false;
-    }
+    if (error) return false;
     return true;
   } catch (err) {
-    console.error('Erro Crítico (updateLead):', err);
     return false;
   }
-};
-
-// Mantido por compatibilidade
-export const updateLeadStatus = async (leadId: string, status: string) => {
-  return updateLead(leadId, { status });
 };
