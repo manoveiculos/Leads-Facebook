@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Users, Search, AlertCircle, MoreHorizontal, 
@@ -16,7 +17,6 @@ import { GoogleGenAI } from "@google/genai";
 
 import { Lead, LeadStatusLabel, DashboardStats } from './types';
 import { fetchLeads, updateLead, supabase } from './supabaseClient';
-import { MOCK_VENDEDORES } from './mockData';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
@@ -46,6 +46,8 @@ const STATUS_CONFIG: Record<LeadStatusLabel, { color: string, bg: string, border
   'Perdido': { color: 'text-white', bg: 'bg-slate-800', border: 'border-transparent' }
 };
 
+const LOGO_URL = "https://manosveiculos.com.br/wp-content/uploads/2024/02/LogoManos.png";
+
 const Badge = ({ status }: { status?: LeadStatusLabel }) => {
   const s = status || 'Novo';
   const cfg = STATUS_CONFIG[s] || STATUS_CONFIG['Novo'];
@@ -67,11 +69,21 @@ const App: React.FC = () => {
   const [search, setSearch] = useState('');
   const [filterSeller, setFilterSeller] = useState<string>('Todos');
   const [filterStatus, setFilterStatus] = useState<string>('Todos');
+  const [dashboardFilterMode, setDashboardFilterMode] = useState<'all' | 'today' | 'active'>('all');
 
   const [editFields, setEditFields] = useState<Partial<Lead>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Extrair vendedores reais dos dados
+  const realSellers = useMemo(() => {
+    const sellers = new Set<string>();
+    leads.forEach(l => {
+      if (l.vendedor) sellers.add(l.vendedor);
+    });
+    return Array.from(sellers).sort();
+  }, [leads]);
 
   useEffect(() => {
     const init = async () => {
@@ -83,7 +95,7 @@ const App: React.FC = () => {
     init();
 
     const channel = supabase
-      .channel('manos-crm-v2')
+      .channel('manos-crm-v3')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads_facebook_2026' }, (payload) => {
         if (payload.eventType === 'INSERT') setLeads(p => [payload.new as Lead, ...p]);
         if (payload.eventType === 'UPDATE') {
@@ -153,9 +165,9 @@ const App: React.FC = () => {
     setIsSaving(false);
   };
 
-  const stats: DashboardStats = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const todayLeads = leads.filter(l => l.created_at.startsWith(today));
+  const stats = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayLeads = leads.filter(l => l.created_at.startsWith(todayStr));
     const activeLeads = leads.filter(l => !['Vendido', 'Perdido', 'Novo'].includes(l.status));
     const soldCount = leads.filter(l => l.status === 'Vendido').length;
     
@@ -163,21 +175,34 @@ const App: React.FC = () => {
       total_hoje: todayLeads.length,
       em_atendimento: activeLeads.length,
       taxa_conversao: leads.length > 0 ? Math.round((soldCount / leads.length) * 100) : 0,
-      leads_atrasados: activeLeads.filter(l => {
-        if (!l.last_interaction_at) return true;
-        const last = new Date(l.last_interaction_at).getTime();
-        const diff = Date.now() - last;
-        return diff > 24 * 60 * 60 * 1000;
-      }).length
+      total_leads: leads.length
     };
   }, [leads]);
+
+  const navigateFromDashboard = (mode: 'all' | 'today' | 'active') => {
+    setDashboardFilterMode(mode);
+    setFilterSeller('Todos');
+    setFilterStatus('Todos');
+    setSearch('');
+    setActiveTab('leads');
+    setViewMode('list');
+  };
 
   const filteredLeads = leads.filter(l => {
     const matchesSearch = l.nome.toLowerCase().includes(search.toLowerCase()) || 
                           (l.carro_interesse?.toLowerCase() || '').includes(search.toLowerCase());
     const matchesSeller = filterSeller === 'Todos' || l.vendedor === filterSeller;
     const matchesStatus = filterStatus === 'Todos' || l.status === filterStatus;
-    return matchesSearch && matchesSeller && matchesStatus;
+    
+    let matchesDashboard = true;
+    if (dashboardFilterMode === 'today') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      matchesDashboard = l.created_at.startsWith(todayStr);
+    } else if (dashboardFilterMode === 'active') {
+      matchesDashboard = !['Vendido', 'Perdido', 'Novo'].includes(l.status);
+    }
+
+    return matchesSearch && matchesSeller && matchesStatus && matchesDashboard;
   });
 
   const chartData = useMemo(() => {
@@ -186,6 +211,13 @@ const App: React.FC = () => {
       value: leads.filter(l => l.status === status).length
     })).filter(d => d.value > 0);
   }, [leads]);
+
+  const sellerChartData = useMemo(() => {
+    return realSellers.map(seller => ({
+      name: seller,
+      leads: leads.filter(l => l.vendedor === seller).length
+    }));
+  }, [realSellers, leads]);
 
   const kanbanData = useMemo(() => {
     const groups: Record<string, Lead[]> = {};
@@ -200,11 +232,12 @@ const App: React.FC = () => {
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
       {/* Sidebar - Desktop */}
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-10">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
-            <LayoutDashboard size={22} strokeWidth={2.5} />
-          </div>
-          <h1 className="font-black text-xl tracking-tight text-indigo-950">MANOS CRM</h1>
+        <div 
+          className="flex flex-col gap-2 mb-10 cursor-pointer hover:opacity-80 transition-opacity" 
+          onClick={() => navigateFromDashboard('all')}
+        >
+          <img src={LOGO_URL} alt="Manos Veículos" className="h-12 object-contain self-start" />
+          <div className="h-1 w-12 bg-indigo-600 rounded-full"></div>
         </div>
 
         <nav className="flex-1 space-y-1">
@@ -215,7 +248,7 @@ const App: React.FC = () => {
             <LayoutDashboard size={20} /> Painel Geral
           </button>
           <button 
-            onClick={() => { setActiveTab('leads'); setViewMode('list'); setIsMobileMenuOpen(false); }}
+            onClick={() => { navigateFromDashboard('all'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'leads' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             <Users size={20} /> Meus Leads
@@ -224,8 +257,8 @@ const App: React.FC = () => {
 
         <div className="mt-auto pt-6 border-t border-slate-100">
           <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-4 rounded-2xl text-white shadow-md">
-            <p className="text-xs opacity-80 mb-1">Versão 2.4</p>
-            <p className="font-bold text-sm">Pronto para vender!</p>
+            <p className="text-xs opacity-80 mb-1">Versão 3.0</p>
+            <p className="font-bold text-sm">Dados 100% Reais</p>
           </div>
         </div>
       </aside>
@@ -254,8 +287,17 @@ const App: React.FC = () => {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <div className="w-10 h-10 rounded-full bg-slate-200 border-2 border-white shadow-sm overflow-hidden">
-              <img src="https://picsum.photos/seed/admin/100" alt="Avatar" className="w-full h-full object-cover" />
+            <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
+               <div className="text-right hidden sm:block">
+                 <p className="text-xs font-bold text-slate-800">Administrador</p>
+                 <p className="text-[10px] text-slate-400">Manos Veículos</p>
+               </div>
+               <div 
+                 className="w-10 h-10 rounded-full bg-white border border-slate-200 shadow-sm overflow-hidden flex items-center justify-center p-1 cursor-pointer"
+                 onClick={() => navigateFromDashboard('all')}
+               >
+                 <img src={LOGO_URL} alt="Manos" className="w-full h-full object-contain" />
+               </div>
             </div>
           </div>
         </header>
@@ -267,19 +309,28 @@ const App: React.FC = () => {
               {/* Stats Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 {[
-                  { label: 'Leads Hoje', val: stats.total_hoje, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50' },
-                  { label: 'Em Atendimento', val: stats.em_atendimento, icon: Activity, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-                  { label: 'Taxa de Venda', val: `${stats.taxa_conversao}%`, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                  { label: 'Fila de Atraso', val: stats.leads_atrasados, icon: AlertCircle, color: 'text-rose-600', bg: 'bg-rose-50' },
+                  { label: 'Leads Hoje', val: stats.total_hoje, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50', mode: 'today' },
+                  { label: 'Em Atendimento', val: stats.em_atendimento, icon: Activity, color: 'text-indigo-600', bg: 'bg-indigo-50', mode: 'active' },
+                  { label: 'Taxa de Venda', val: `${stats.taxa_conversao}%`, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50', mode: null },
+                  { label: 'Total de Leads', val: stats.total_leads, icon: Users, color: 'text-purple-600', bg: 'bg-purple-50', mode: 'all' },
                 ].map((s, i) => (
-                  <div key={i} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
+                  <div 
+                    key={i} 
+                    onClick={() => s.mode && navigateFromDashboard(s.mode as any)}
+                    className={`bg-white p-6 rounded-3xl border border-slate-100 shadow-sm transition-all ${s.mode ? 'cursor-pointer hover:shadow-lg hover:-translate-y-1 hover:border-indigo-200' : ''}`}
+                  >
                     <div className="flex items-center gap-4 mb-4">
                       <div className={`p-3 rounded-2xl ${s.bg} ${s.color}`}>
                         <s.icon size={24} />
                       </div>
-                      <p className="text-sm font-medium text-slate-500 leading-tight">{s.label}</p>
+                      <p className="text-sm font-bold text-slate-500 leading-tight">{s.label}</p>
                     </div>
                     <p className="text-3xl font-black text-slate-800">{s.val}</p>
+                    {s.mode && (
+                      <p className="text-[10px] text-indigo-500 font-bold mt-2 flex items-center gap-1">
+                        Ver detalhes <ChevronRight size={10} />
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -288,7 +339,7 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                   <h3 className="text-base font-bold text-slate-800 mb-6 flex items-center gap-2">
-                    <PieChartIcon className="inline-block" size={18} /> Funil de Status
+                    <PieChartIcon className="inline-block" size={18} /> Funil de Status (Dados Reais)
                   </h3>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
@@ -313,16 +364,16 @@ const App: React.FC = () => {
 
                 <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                   <h3 className="text-base font-bold text-slate-800 mb-6 flex items-center gap-2">
-                    <Users size={18} /> Leads por Vendedor
+                    <Users size={18} /> Performance por Vendedor Real
                   </h3>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={MOCK_VENDEDORES}>
+                      <BarChart data={sellerChartData}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="name" />
                         <YAxis />
                         <Tooltip cursor={{fill: '#f8fafc'}} />
-                        <Bar dataKey="leads_recebidos" fill="#6366f1" radius={[8, 8, 0, 0]} />
+                        <Bar dataKey="leads" fill="#6366f1" radius={[8, 8, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -334,32 +385,42 @@ const App: React.FC = () => {
               {/* Views & Filters */}
               {viewMode !== 'detail' && (
                 <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                  <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
-                    <button 
-                      onClick={() => setViewMode('list')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'list' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
-                    >
-                      <ListIcon size={18} /> Lista
-                    </button>
-                    <button 
-                      onClick={() => setViewMode('kanban')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'kanban' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
-                    >
-                      <Kanban size={18} /> Kanban
-                    </button>
+                  <div className="flex items-center gap-3">
+                    <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm">
+                      <button 
+                        onClick={() => setViewMode('list')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'list' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                      >
+                        <ListIcon size={18} /> Lista
+                      </button>
+                      <button 
+                        onClick={() => setViewMode('kanban')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${viewMode === 'kanban' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                      >
+                        <Kanban size={18} /> Kanban
+                      </button>
+                    </div>
+                    {dashboardFilterMode !== 'all' && (
+                      <button 
+                        onClick={() => setDashboardFilterMode('all')}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold border border-indigo-100 hover:bg-indigo-100"
+                      >
+                        Limpar Filtro Dashboard <X size={12} />
+                      </button>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3">
                     <select 
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                       value={filterSeller}
                       onChange={(e) => setFilterSeller(e.target.value)}
                     >
                       <option value="Todos">Vendedor: Todos</option>
-                      {MOCK_VENDEDORES.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
+                      {realSellers.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                     <select 
-                      className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                       value={filterStatus}
                       onChange={(e) => setFilterStatus(e.target.value)}
                     >
@@ -416,6 +477,12 @@ const App: React.FC = () => {
                         ))}
                       </tbody>
                     </table>
+                    {filteredLeads.length === 0 && (
+                      <div className="p-20 text-center">
+                        <Users size={48} className="mx-auto text-slate-200 mb-4" />
+                        <p className="text-slate-500 font-bold">Nenhum lead encontrado com estes filtros.</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : viewMode === 'kanban' ? (
@@ -495,7 +562,7 @@ const App: React.FC = () => {
                             onChange={e => setEditFields(prev => ({ ...prev, vendedor: e.target.value }))}
                           >
                             <option value="">Nenhum</option>
-                            {MOCK_VENDEDORES.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
+                            {realSellers.map(v => <option key={v} value={v}>{v}</option>)}
                           </select>
                         </div>
                         <div>
@@ -600,12 +667,12 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm md:hidden">
           <aside className="w-72 h-full bg-white p-6 shadow-2xl flex flex-col">
             <div className="flex items-center justify-between mb-10">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white">
-                  <LayoutDashboard size={18} />
-                </div>
-                <h1 className="font-black text-lg text-indigo-950 tracking-tight">MANOS CRM</h1>
-              </div>
+              <img 
+                src={LOGO_URL} 
+                alt="Manos Veículos" 
+                className="h-10 object-contain cursor-pointer" 
+                onClick={() => { navigateFromDashboard('all'); setIsMobileMenuOpen(false); }}
+              />
               <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 text-slate-400">
                 <X />
               </button>
@@ -619,7 +686,7 @@ const App: React.FC = () => {
                 <LayoutDashboard size={20} /> Painel Geral
               </button>
               <button 
-                onClick={() => { setActiveTab('leads'); setViewMode('list'); setIsMobileMenuOpen(false); }}
+                onClick={() => { navigateFromDashboard('all'); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'leads' ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-slate-500'}`}
               >
                 <Users size={20} /> Meus Leads
